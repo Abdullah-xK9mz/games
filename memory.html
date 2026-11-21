@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="ar">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1E1B4B" />
+    <title>لعبة الذاكرة</title>
+    <!-- التنسيق العام للصفحة -->
+    <style>
+      /* ===== الهوية الموحدة: ليل نيلي + بنفسجي + ذهبي ===== */
+      :root {
+        --bg: #1e1b4b;
+        --bg2: #2a2670;
+        --brand: #7c3aed;
+        --brand-d: #4338ca;
+        --accent: #fbbf24;
+        --card: #f5f3ff;
+        --ink: #1e1b4b;
+        --ink-soft: #4c1d95;
+        --line: #ddd6fe;
+        --font: system-ui, -apple-system, 'Segoe UI', Tahoma, 'Noto Sans Arabic', sans-serif;
+      }
+      /* المتغيرات: ألوان اللعبة الرئيسية */
+      :root {
+        --c: #7c3aed;
+        --d: #4338ca;
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        font-family: var(--font);
+        background: var(--bg);
+        color: #eef2ff;
+        user-select: none;
+        -webkit-user-select: none;
+        min-height: 100vh;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      header {
+        background: linear-gradient(135deg, var(--brand-d), var(--brand));
+        color: #fff;
+        padding: calc(18px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) 18px
+          calc(18px + env(safe-area-inset-left));
+      }
+      header h1 {
+        margin: 0;
+        font-size: 23px;
+      }
+      header p {
+        margin: 4px 0 0;
+        opacity: 0.85;
+        font-size: 13px;
+      }
+      .levels {
+        display: flex;
+        gap: 8px;
+        padding: 14px 14px 4px;
+      }
+      .levels button {
+        flex: 1;
+        border: 0;
+        border-radius: 14px;
+        padding: 11px 6px;
+        font-size: 14px;
+        font-weight: 700;
+        background: var(--card);
+        color: var(--ink-soft);
+      }
+      .levels button small {
+        display: block;
+        font-weight: 500;
+        font-size: 11px;
+        opacity: 0.75;
+        margin-top: 2px;
+      }
+      .levels button.on {
+        background: var(--accent);
+        color: var(--ink);
+      }
+      .levels button:active,
+      .restart:active {
+        transform: scale(0.96);
+      }
+      .stats {
+        display: flex;
+        gap: 8px;
+        padding: 10px 14px;
+      }
+      .stat {
+        flex: 1;
+        background: #fff;
+        border-radius: 14px;
+        padding: 9px 6px;
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(76, 29, 149, 0.08);
+      }
+      .stat b {
+        display: block;
+        font-size: 19px;
+        color: #4c1d95;
+        font-variant-numeric: tabular-nums;
+      }
+      .stat span {
+        font-size: 11px;
+        color: #7c3aed;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .board {
+        display: grid;
+        gap: 8px;
+        padding: 6px 14px 14px;
+        max-width: 480px;
+        margin: 0 auto;
+      }
+      /* البطاقات وحركة القلب ثلاثية الأبعاد */
+      .card {
+        perspective: 600px;
+        aspect-ratio: 3/4;
+        cursor: pointer;
+      }
+      .inner {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transition: transform 0.4s cubic-bezier(0.4, 0.2, 0.2, 1);
+        transform-style: preserve-3d;
+      }
+      .card.flip .inner,
+      .card.done .inner {
+        transform: rotateY(180deg);
+      }
+      .face {
+        position: absolute;
+        inset: 0;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+      }
+      .back {
+        background: linear-gradient(135deg, #a78bfa, #7c3aed);
+        box-shadow: 0 2px 5px rgba(76, 29, 149, 0.25);
+      }
+      .back::after {
+        content: '';
+        width: 40%;
+        height: 40%;
+        border: 3px solid rgba(255, 255, 255, 0.45);
+        border-radius: 50%;
+      }
+      .front {
+        background: #fff;
+        transform: rotateY(180deg);
+        box-shadow: 0 2px 5px rgba(76, 29, 149, 0.15);
+        font-size: clamp(22px, 8vw, 40px);
+      }
+      .board.c5 .front {
+        font-size: clamp(20px, 7vw, 34px);
+      }
+      .card.done .front {
+        background: #dcfce7;
+        animation: pop 0.35s ease;
+      }
+      .card.bad .front {
+        background: #fee2e2;
+      }
+      @keyframes pop {
+        50% {
+          transform: rotateY(180deg) scale(1.08);
+        }
+      }
+      .restart {
+        display: block;
+        margin: 0 auto 20px;
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 26px;
+        font-size: 15px;
+        font-weight: 700;
+        background: var(--accent);
+        color: var(--ink);
+        box-shadow: 0 1px 3px rgba(76, 29, 149, 0.15);
+      }
+      /* نافذة الفوز */
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(30, 27, 75, 0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        z-index: 10;
+      }
+      .modal.show {
+        display: flex;
+      }
+      .box {
+        background: #fff;
+        border-radius: 22px;
+        padding: 26px 22px;
+        text-align: center;
+        width: 100%;
+        max-width: 330px;
+        animation: rise 0.3s ease;
+      }
+      @keyframes rise {
+        from {
+          transform: translateY(30px);
+          opacity: 0;
+        }
+      }
+      .box .big {
+        font-size: 54px;
+      }
+      .box h2 {
+        margin: 6px 0 4px;
+        color: #4c1d95;
+      }
+      .box p {
+        margin: 6px 0;
+        color: #6b21a8;
+      }
+      .box .rec {
+        color: #16a34a;
+        font-weight: 700;
+      }
+      .box button {
+        margin-top: 14px;
+        width: 100%;
+        border: 0;
+        border-radius: 14px;
+        padding: 14px;
+        font-size: 16px;
+        font-weight: 700;
+        background: var(--accent);
+        color: var(--ink);
+      }
+      .box button.alt {
+        background: #ede9fe;
+        color: #5b21b6;
+        margin-top: 8px;
+      }
+
+      /* عرض النص العربي بالاتجاه الصحيح دون تغيير التخطيط */
+      h1,
+      h2,
+      p,
+      b,
+      small,
+      span,
+      button,
+      div {
+        unicode-bidi: plaintext;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- الرأس: عنوان اللعبة ووصفها -->
+    <header>
+      <h1>🃏 لعبة الذاكرة</h1>
+      <p>اقلب بطاقتين في كل مرة وابحث عن كل الأزواج المتطابقة.</p>
+    </header>
+    <!-- أزرار اختيار المستوى -->
+    <div class="levels" id="levels">
+      <button data-l="easy">سهل<small>4 × 3</small></button>
+      <button data-l="medium">متوسط<small>4 × 4</small></button>
+      <button data-l="hard">صعب<small>5 × 6</small></button>
+    </div>
+    <!-- الإحصائيات: الحركات والوقت وأفضل نتيجة -->
+    <div class="stats">
+      <div class="stat"><b id="moves">0</b><span>الحركات</span></div>
+      <div class="stat"><b id="time">0:00</b><span>الوقت</span></div>
+      <div class="stat"><b id="best">—</b><span>الأفضل</span></div>
+    </div>
+    <!-- لوحة البطاقات (تُبنى من الجافاسكربت) -->
+    <div class="board" id="board"></div>
+    <!-- زر بدء لعبة جديدة -->
+    <button class="restart" id="restart">↻ لعبة جديدة</button>
+
+    <!-- نافذة الفوز -->
+    <div class="modal" id="modal">
+      <div class="box">
+        <div class="big">🎉</div>
+        <h2>أحسنت!</h2>
+        <p id="result"></p>
+        <p class="rec" id="record"></p>
+        <button id="again">العب مرة أخرى</button>
+        <button class="alt" id="closeModal">إغلاق</button>
+      </div>
+    </div>
+
+    <!-- منطق اللعبة -->
+    <script>
+      (function () {
+        /* الإعدادات: أبعاد كل مستوى ورموز البطاقات */
+        var LEVELS = { easy: { cols: 4, rows: 3 }, medium: { cols: 4, rows: 4 }, hard: { cols: 5, rows: 6 } };
+        var LEVEL_NAMES = { easy: 'سهل', medium: 'متوسط', hard: 'صعب' };
+        var EMOJI = [
+          '🐶',
+          '🐱',
+          '🦊',
+          '🐼',
+          '🐸',
+          '🦁',
+          '🐵',
+          '🐙',
+          '🦄',
+          '🐝',
+          '🐢',
+          '🦋',
+          '🍓',
+          '🍉',
+          '🍕',
+          '🚀',
+          '⚽',
+          '🎸',
+          '🌈',
+          '🍩',
+        ];
+        var $ = function (id) {
+          return document.getElementById(id);
+        };
+        var board = $('board'),
+          modal = $('modal');
+        var level = 'easy',
+          first = null,
+          second = null,
+          lock = false,
+          moves = 0,
+          matched = 0,
+          pairs = 0;
+        var gen = 0,
+          startAt = 0,
+          elapsed = 0,
+          timer = null,
+          running = false,
+          modalOpen = false;
+
+        /* أدوات مساعدة: التخزين والاهتزاز وتنسيق الوقت وخلط البطاقات */
+        function load(k, d) {
+          try {
+            var v = localStorage.getItem(k);
+            return v === null ? d : JSON.parse(v);
+          } catch (e) {
+            return d;
+          }
+        }
+        function save(k, v) {
+          try {
+            localStorage.setItem(k, JSON.stringify(v));
+          } catch (e) {}
+        }
+        var bests = load('memory.bests', {});
+        level = load('memory.level', 'easy');
+        if (!LEVELS[level]) level = 'easy';
+
+        function buzz(p) {
+          if (window.FreeApp && FreeApp.vibrate) FreeApp.vibrate(p);
+          else if (navigator.vibrate) navigator.vibrate(p);
+        }
+        function fmt(ms) {
+          var s = Math.floor(ms / 1000);
+          return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+        }
+        function shuffle(a) {
+          for (var i = a.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var t = a[i];
+            a[i] = a[j];
+            a[j] = t;
+          }
+          return a;
+        }
+
+        /* المؤقت */
+        function now() {
+          return elapsed + (running ? Date.now() - startAt : 0);
+        }
+        function startTimer() {
+          if (running) return;
+          running = true;
+          startAt = Date.now();
+          timer = setInterval(tick, 250);
+        }
+        function stopTimer() {
+          if (!running) return;
+          elapsed += Date.now() - startAt;
+          running = false;
+          clearInterval(timer);
+          timer = null;
+        }
+        function tick() {
+          $('time').textContent = fmt(now());
+        }
+
+        /* عرض أفضل نتيجة للمستوى */
+        function showBest() {
+          var b = bests[level];
+          $('best').textContent = b ? b.moves + ' · ' + fmt(b.time) : '—';
+        }
+
+        /* بدء لعبة جديدة وبناء البطاقات */
+        function newGame() {
+          gen++;
+          stopTimer();
+          elapsed = 0;
+          moves = 0;
+          matched = 0;
+          first = second = null;
+          lock = false;
+          var L = LEVELS[level];
+          pairs = (L.cols * L.rows) / 2;
+          var picks = shuffle(EMOJI.slice()).slice(0, pairs);
+          var deck = shuffle(picks.concat(picks));
+          board.innerHTML = '';
+          board.style.gridTemplateColumns = 'repeat(' + L.cols + ', 1fr)';
+          board.className = 'board' + (L.cols === 5 ? ' c5' : '');
+          board.style.maxWidth = (L.cols === 5 ? 420 : 400) + 'px';
+          deck.forEach(function (em) {
+            var c = document.createElement('div');
+            c.className = 'card';
+            c.dataset.v = em;
+            var inner = document.createElement('div');
+            inner.className = 'inner';
+            var back = document.createElement('div');
+            back.className = 'face back';
+            var front = document.createElement('div');
+            front.className = 'face front';
+            front.textContent = em;
+            inner.appendChild(back);
+            inner.appendChild(front);
+            c.appendChild(inner);
+            c.addEventListener('click', function () {
+              flip(c);
+            });
+            board.appendChild(c);
+          });
+          document.querySelectorAll('#levels button').forEach(function (b) {
+            b.classList.toggle('on', b.dataset.l === level);
+          });
+          $('moves').textContent = '0';
+          tick();
+          showBest();
+        }
+
+        /* قلب البطاقة ومقارنتها بالبطاقة الأخرى */
+        function flip(c) {
+          if (
+            lock ||
+            modalOpen ||
+            c === first ||
+            c.classList.contains('done') ||
+            c.classList.contains('flip')
+          )
+            return;
+          startTimer();
+          c.classList.add('flip');
+          buzz(10);
+          if (!first) {
+            first = c;
+            return;
+          }
+          second = c;
+          lock = true;
+          moves++;
+          $('moves').textContent = moves;
+          var a = first,
+            b = second,
+            g = gen;
+          if (a.dataset.v === b.dataset.v) {
+            setTimeout(function () {
+              if (g !== gen) return;
+              a.classList.add('done');
+              b.classList.add('done');
+              a.classList.remove('flip');
+              b.classList.remove('flip');
+              first = second = null;
+              lock = false;
+              matched++;
+              buzz(30);
+              if (matched === pairs) win();
+            }, 350);
+          } else {
+            setTimeout(function () {
+              if (g === gen) {
+                a.classList.add('bad');
+                b.classList.add('bad');
+              }
+            }, 350);
+            setTimeout(function () {
+              if (g !== gen) return;
+              a.classList.remove('flip', 'bad');
+              b.classList.remove('flip', 'bad');
+              first = second = null;
+              lock = false;
+            }, 950);
+          }
+        }
+
+        /* حساب النتيجة عند الفوز */
+        function win() {
+          stopTimer();
+          tick();
+          var t = now(),
+            b = bests[level],
+            rec = !b || moves < b.moves || (moves === b.moves && t < b.time);
+          if (rec) {
+            bests[level] = { moves: moves, time: t };
+            save('memory.bests', bests);
+          }
+          showBest();
+          $('result').textContent = moves + ' حركة في ' + fmt(t) + ' على مستوى ' + LEVEL_NAMES[level] + '.';
+          $('record').textContent = rec
+            ? '🏆 رقم قياسي جديد!'
+            : 'الأفضل: ' + bests[level].moves + ' حركة · ' + fmt(bests[level].time);
+          buzz([0, 60, 60, 60]);
+          setTimeout(openModal, 450);
+        }
+
+        /* التحكم في نافذة الفوز */
+        function openModal() {
+          if (modalOpen) return;
+          modalOpen = true;
+          modal.classList.add('show');
+          history.pushState({ v: 'win' }, '');
+        }
+        function hideModal() {
+          modalOpen = false;
+          modal.classList.remove('show');
+        }
+        function closeModal() {
+          if (!modalOpen) return;
+          if (history.state && history.state.v === 'win') history.back();
+          else hideModal();
+        }
+        window.addEventListener('popstate', function () {
+          if (modalOpen) hideModal();
+        });
+
+        /* ربط الأزرار بالأحداث */
+        $('again').onclick = function () {
+          closeModal();
+          newGame();
+        };
+        $('closeModal').onclick = closeModal;
+        modal.addEventListener('click', function (e) {
+          if (e.target === modal) closeModal();
+        });
+        $('restart').onclick = newGame;
+        document.querySelectorAll('#levels button').forEach(function (b) {
+          b.onclick = function () {
+            level = b.dataset.l;
+            save('memory.level', level);
+            newGame();
+          };
+        });
+        /* إيقاف المؤقت عند إخفاء الصفحة */
+        var pausedByHide = false;
+        document.addEventListener('visibilitychange', function () {
+          if (document.hidden) {
+            if (running) {
+              stopTimer();
+              pausedByHide = true;
+            }
+          } else if (pausedByHide) {
+            pausedByHide = false;
+            if (matched < pairs && (moves > 0 || first)) startTimer();
+          }
+        });
+        newGame();
+      })();
+    </script>
+  </body>
+</html>

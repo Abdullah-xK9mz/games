@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="ar">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#1E1B4B" />
+    <title>تحطيم الطوب</title>
+    <!-- التنسيق العام للصفحة -->
+    <style>
+      /* ===== الهوية الموحدة: ليل نيلي + بنفسجي + ذهبي ===== */
+      :root {
+        --bg: #1e1b4b;
+        --bg2: #2a2670;
+        --brand: #7c3aed;
+        --brand-d: #4338ca;
+        --accent: #fbbf24;
+        --card: #f5f3ff;
+        --ink: #1e1b4b;
+        --ink-soft: #4c1d95;
+        --line: #ddd6fe;
+        --font: system-ui, -apple-system, 'Segoe UI', Tahoma, 'Noto Sans Arabic', sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+        font-family: var(--font);
+      }
+      #stage {
+        position: fixed;
+        top: env(safe-area-inset-top);
+        bottom: env(safe-area-inset-bottom);
+        left: env(safe-area-inset-left);
+        right: env(safe-area-inset-right);
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      #pause {
+        position: fixed;
+        top: calc(10px + env(safe-area-inset-top));
+        right: calc(12px + env(safe-area-inset-right));
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        background: rgba(30, 27, 75, 0.6);
+        color: #fff;
+        font-size: 16px;
+        font-weight: 800;
+      }
+      #pause:active {
+        transform: scale(0.94);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- لوحة اللعبة -->
+    <div id="stage"><canvas id="c"></canvas></div>
+    <!-- زر الإيقاف المؤقت -->
+    <button id="pause" aria-label="إيقاف مؤقت">❚❚</button>
+    <!-- منطق اللعبة -->
+    <script>
+      /* عناصر الصفحة */
+      const stage = document.getElementById('stage'),
+        cv = document.getElementById('c'),
+        ctx = cv.getContext('2d');
+      /* الثوابت: أبعاد الملعب والطوب */
+      const VW = 400,
+        COLS = 8,
+        BR_H = 20,
+        BR_GAP = 4,
+        TOP = 74,
+        BALL_R = 7;
+      /* تصميم المستويات: الرقم هو صلابة الطوب والنقطة تعني خانة فارغة */
+      const LEVELS = [
+        ['11111111', '11111111', '22222222', '22222222', '33333333'],
+        ['...11...', '..1221..', '.122221.', '12233221', '.122221.'],
+        ['2.2.2.2.', '.2.2.2.2', '3.3.3.3.', '.3.3.3.3', '11111111'],
+        ['33333333', '3......3', '3.2222.3', '3.2112.3', '3......3', '33333333'],
+        ['.22..22.', '23322332', '23333332', '.233332.', '..2332..', '...22...'],
+        ['1.1.1.1.', '.2.2.2.2', '3.3.3.3.', '33333333', '22222222', '11111111'],
+      ];
+      /* ألوان الطوب والتعزيزات */
+      const COLORS = { 1: ['#34D399', '#059669'], 2: ['#60A5FA', '#2563EB'], 3: ['#F472B6', '#DB2777'] };
+      const PU = { W: { c: '#F59E0B', t: '↔' }, L: { c: '#EF4444', t: '♥' }, S: { c: '#22D3EE', t: '🐢' } };
+      /* متغيرات الحالة */
+      let VH = 700,
+        k = 1,
+        dpr = 1;
+      let state = 'ready',
+        paused = false,
+        score = 0,
+        best = 0,
+        lives = 3,
+        level = 0,
+        loops = 0;
+      let paddle,
+        ball,
+        bricks = [],
+        drops = [],
+        particles = [],
+        speed = 0,
+        wideT = 0,
+        slowT = 0,
+        msg = '',
+        msgT = 0,
+        keys = {};
+      try {
+        best = +localStorage.getItem('breakout.best') || 0;
+      } catch (e) {}
+
+      /* ضبط الحجم */
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 3);
+        const cw = stage.clientWidth || window.innerWidth,
+          ch = stage.clientHeight || window.innerHeight;
+        cv.width = Math.round(cw * dpr);
+        cv.height = Math.round(ch * dpr);
+        k = Math.min(cw / VW, ch / 520);
+        VH = ch / k;
+        if (paddle) {
+          paddle.y = VH - 70;
+          if (ball && ball.stuck) ball.y = paddle.y - BALL_R - 1;
+        }
+      }
+      window.addEventListener('resize', resize);
+      const offX = () => ((stage.clientWidth || window.innerWidth) / k - VW) / 2; // توسيط ملعب اللعبة (عرضه 400 وحدة) أفقيًا
+
+      /* سرعة الكرة */
+      const baseSpeed = () => 330 + loops * 40 + level * 12;
+      /* بناء مستوى الطوب */
+      function buildLevel() {
+        bricks = [];
+        drops = [];
+        const map = LEVELS[level % LEVELS.length],
+          bw = (VW - 16 - BR_GAP * (COLS - 1)) / COLS;
+        map.forEach((row, r) =>
+          [...row].forEach((ch, c) => {
+            if (ch === '.') return;
+            const hp = +ch + (loops > 0 && ch !== '3' ? 1 : 0);
+            bricks.push({
+              x: 8 + c * (bw + BR_GAP),
+              y: TOP + r * (BR_H + BR_GAP),
+              w: bw,
+              h: BR_H,
+              hp: Math.min(3, hp),
+              max: Math.min(3, hp),
+            });
+          }),
+        );
+        resetBall();
+        msg = 'المستوى ' + (level + 1);
+        msgT = 1.6;
+      }
+      /* إعادة الكرة والمضرب */
+      function resetBall() {
+        paddle = paddle || { x: VW / 2, w: 84, y: VH - 70, tx: VW / 2 };
+        paddle.y = VH - 70;
+        wideT = 0;
+        slowT = 0;
+        paddle.w = 84;
+        speed = baseSpeed();
+        ball = { x: paddle.x, y: paddle.y - BALL_R - 1, vx: 0, vy: 0, stuck: true };
+      }
+      /* بدء لعبة جديدة */
+      function newGame() {
+        score = 0;
+        lives = 3;
+        level = 0;
+        loops = 0;
+        paddle = null;
+        particles = [];
+        buildLevel();
+        state = 'play';
+      }
+      function buzz(p) {
+        try {
+          if (window.FreeApp && FreeApp.vibrate) FreeApp.vibrate(p);
+          else if (navigator.vibrate) navigator.vibrate(p);
+        } catch (e) {}
+      }
+
+      /* إطلاق الكرة */
+      function launch() {
+        if (!ball.stuck) return;
+        const a = Math.random() * 0.6 - 0.3;
+        ball.vx = speed * Math.sin(a);
+        ball.vy = -speed * Math.cos(a);
+        ball.stuck = false;
+      }
+      // ---------- التحكم ----------
+      /* التحكم بالمؤشر واللمس ولوحة المفاتيح */
+      function worldX(clientX) {
+        return (clientX - cv.getBoundingClientRect().left) / k - offX();
+      }
+      let dragging = false;
+      cv.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (paused) {
+          paused = false;
+          last = performance.now();
+          return;
+        }
+        if (state === 'ready' || (state === 'over' && performance.now() - overAt > 700)) {
+          newGame();
+          return;
+        }
+        dragging = true;
+        cv.setPointerCapture && cv.setPointerCapture(e.pointerId);
+        paddle.tx = worldX(e.clientX);
+        if (ball.stuck) launchPending = true;
+      });
+      let launchPending = false;
+      cv.addEventListener('pointermove', (e) => {
+        if (state === 'play' && (dragging || e.pointerType === 'mouse')) paddle.tx = worldX(e.clientX);
+      });
+      window.addEventListener('pointerup', () => {
+        dragging = false;
+        if (launchPending && state === 'play' && !paused) launch();
+        launchPending = false;
+      });
+      window.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        if (e.code === 'Space' || e.code === 'Enter') {
+          e.preventDefault();
+          if (paused) {
+            paused = false;
+            last = performance.now();
+          } else if (state === 'play') launch();
+          else newGame();
+        }
+        if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
+      });
+      window.addEventListener('keyup', (e) => (keys[e.code] = false));
+      function togglePause() {
+        if (state !== 'play') return;
+        paused = !paused;
+        last = performance.now();
+      }
+      document.getElementById('pause').addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        togglePause();
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && state === 'play') paused = true;
+        last = performance.now();
+      });
+
+      // ---------- منطق اللعبة ----------
+      /* ضرب الطوب وخسارة الحياة */
+      let overAt = 0;
+      function setSpeed(s) {
+        const cur = Math.hypot(ball.vx, ball.vy) || 1;
+        ball.vx *= s / cur;
+        ball.vy *= s / cur;
+      }
+      function hitBrick(b) {
+        b.hp--;
+        score += 10 * (loops + 1);
+        buzz(6);
+        for (let i = 0; i < 6; i++)
+          particles.push({
+            x: b.x + b.w / 2,
+            y: b.y + b.h / 2,
+            vx: (Math.random() - 0.5) * 260,
+            vy: (Math.random() - 0.5) * 260,
+            life: 0.5,
+            c: COLORS[b.max][0],
+          });
+        if (b.hp <= 0) {
+          bricks.splice(bricks.indexOf(b), 1);
+          score += 15;
+          if (Math.random() < 0.12) {
+            const t = ['W', 'W', 'S', 'L'][Math.floor(Math.random() * 4)];
+            drops.push({ x: b.x + b.w / 2, y: b.y, t });
+          }
+        }
+        speed = Math.min(speed * 1.012, 680);
+        if (slowT <= 0) setSpeed(speed);
+      }
+      function collideBricks(axis) {
+        for (const b of bricks) {
+          if (
+            ball.x + BALL_R > b.x &&
+            ball.x - BALL_R < b.x + b.w &&
+            ball.y + BALL_R > b.y &&
+            ball.y - BALL_R < b.y + b.h
+          ) {
+            if (axis === 'x') {
+              ball.x = ball.vx > 0 ? b.x - BALL_R : b.x + b.w + BALL_R;
+              ball.vx = -ball.vx;
+            } else {
+              ball.y = ball.vy > 0 ? b.y - BALL_R : b.y + b.h + BALL_R;
+              ball.vy = -ball.vy;
+            }
+            hitBrick(b);
+            return true;
+          }
+        }
+        return false;
+      }
+      function loseLife() {
+        lives--;
+        buzz([0, 80, 60, 80]);
+        if (lives <= 0) {
+          state = 'over';
+          overAt = performance.now();
+          if (score > best) {
+            best = score;
+            try {
+              localStorage.setItem('breakout.best', best);
+            } catch (e) {}
+          }
+        } else {
+          resetBall();
+          msg = lives === 1 ? 'تبقّت حياة واحدة' : lives === 2 ? 'تبقّت حياتان' : 'تبقّت ' + lives + ' أرواح';
+          msgT = 1.4;
+        }
+      }
+      /* تحديث الحركة والتصادمات والتعزيزات */
+      function update(dt) {
+        msgT = Math.max(0, msgT - dt);
+        particles.forEach((p) => {
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.life -= dt;
+        });
+        particles = particles.filter((p) => p.life > 0);
+        if (state !== 'play') return;
+        // المضرب
+        if (keys.ArrowLeft) paddle.tx = paddle.x - 1400 * dt;
+        if (keys.ArrowRight) paddle.tx = paddle.x + 1400 * dt;
+        const target = Math.max(paddle.w / 2, Math.min(VW - paddle.w / 2, paddle.tx));
+        paddle.x += (target - paddle.x) * Math.min(1, dt * 25);
+        if (wideT > 0) {
+          wideT -= dt;
+          paddle.w += (124 - paddle.w) * Math.min(1, dt * 8);
+        } else paddle.w += (84 - paddle.w) * Math.min(1, dt * 8);
+        if (slowT > 0) {
+          slowT -= dt;
+          if (slowT <= 0 && !ball.stuck) setSpeed(speed);
+        }
+        if (ball.stuck) {
+          ball.x = paddle.x;
+          ball.y = paddle.y - BALL_R - 1;
+        } else {
+          const steps = Math.ceil((Math.hypot(ball.vx, ball.vy) * dt) / 4);
+          const sdt = dt / steps;
+          for (let i = 0; i < steps && state === 'play' && !ball.stuck; i++) {
+            ball.x += ball.vx * sdt;
+            if (ball.x < BALL_R) {
+              ball.x = BALL_R;
+              ball.vx = Math.abs(ball.vx);
+            }
+            if (ball.x > VW - BALL_R) {
+              ball.x = VW - BALL_R;
+              ball.vx = -Math.abs(ball.vx);
+            }
+            collideBricks('x');
+            ball.y += ball.vy * sdt;
+            if (ball.y < TOP - 30 + BALL_R) {
+              ball.y = TOP - 30 + BALL_R;
+              ball.vy = Math.abs(ball.vy);
+            }
+            collideBricks('y');
+            // ارتداد الكرة عن المضرب
+            if (
+              ball.vy > 0 &&
+              ball.y + BALL_R >= paddle.y &&
+              ball.y + BALL_R <= paddle.y + 14 &&
+              Math.abs(ball.x - paddle.x) <= paddle.w / 2 + BALL_R
+            ) {
+              const off = Math.max(-1, Math.min(1, (ball.x - paddle.x) / (paddle.w / 2)));
+              const a = off * 1.05,
+                s = Math.hypot(ball.vx, ball.vy);
+              ball.vx = s * Math.sin(a);
+              ball.vy = -s * Math.cos(a);
+              ball.y = paddle.y - BALL_R;
+              buzz(4);
+            }
+            if (ball.y - BALL_R > VH) {
+              loseLife();
+              break;
+            }
+            if (!bricks.length) {
+              score += 100;
+              level++;
+              if (level % LEVELS.length === 0) loops++;
+              buzz([0, 40, 40, 40]);
+              buildLevel();
+              break;
+            }
+          }
+        }
+        // تعزيزات تسقط من الطوب
+        drops.forEach((d) => (d.y += 150 * dt));
+        drops = drops.filter((d) => {
+          if (d.y > paddle.y - 8 && d.y < paddle.y + 16 && Math.abs(d.x - paddle.x) < paddle.w / 2 + 12) {
+            if (d.t === 'W') {
+              wideT = 12;
+              msg = 'مضرب عريض!';
+            }
+            if (d.t === 'L') {
+              lives = Math.min(5, lives + 1);
+              msg = 'حياة إضافية!';
+            }
+            if (d.t === 'S') {
+              slowT = 8;
+              if (!ball.stuck) setSpeed(Math.max(260, speed * 0.7));
+              msg = 'كرة بطيئة';
+            }
+            msgT = 1.2;
+            score += 25;
+            buzz(20);
+            return false;
+          }
+          return d.y < VH + 20;
+        });
+      }
+
+      // ---------- الرسم ----------
+      /* أدوات الرسم */
+      function rr(x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+      function txt(s, x, y, size, color = '#fff', align = 'center', weight = 800) {
+        ctx.font = weight + ' ' + size + 'px system-ui,sans-serif';
+        ctx.fillStyle = color;
+        ctx.textAlign = align;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(s, x, y);
+      }
+      /* رسم الإطار كاملًا */
+      function draw() {
+        const ox = offX(),
+          fullW = (stage.clientWidth || window.innerWidth) / k;
+        ctx.direction = 'rtl'; // اتجاه النص العربي داخل اللوحة
+        ctx.setTransform(dpr * k, 0, 0, dpr * k, 0, 0);
+        const g = ctx.createLinearGradient(0, 0, 0, VH);
+        g.addColorStop(0, '#1E1B4B');
+        g.addColorStop(1, '#312E81');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, fullW, VH);
+        ctx.translate(ox, 0);
+        ctx.fillStyle = 'rgba(255,255,255,.04)';
+        ctx.fillRect(0, 0, VW, VH);
+        // واجهة النتيجة والمستوى والأرواح
+        txt('النتيجة', 12, 18, 10, '#A5B4FC', 'left');
+        txt(String(score), 12, 36, 20, '#fff', 'left');
+        txt('المستوى ' + (level + 1), VW / 2, 18, 10, '#A5B4FC');
+        txt('♥'.repeat(Math.max(0, lives)), VW / 2, 36, 16, '#F87171');
+        txt('الأفضل ' + best, VW - 60, 27, 11, '#FCD34D', 'right');
+        ctx.fillStyle = 'rgba(255,255,255,.12)';
+        ctx.fillRect(0, TOP - 30, VW, 1);
+        // الطوب
+        bricks.forEach((b) => {
+          const [c1, c2] = COLORS[b.hp];
+          const bg = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+          bg.addColorStop(0, c1);
+          bg.addColorStop(1, c2);
+          ctx.fillStyle = bg;
+          rr(b.x, b.y, b.w, b.h, 5);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,.25)';
+          ctx.fillRect(b.x + 4, b.y + 3, b.w - 8, 3);
+        });
+        // التعزيزات
+        drops.forEach((d) => {
+          ctx.fillStyle = PU[d.t].c;
+          rr(d.x - 15, d.y - 9, 30, 18, 9);
+          ctx.fill();
+          txt(PU[d.t].t, d.x, d.y + 1, 12);
+        });
+        // الجزيئات
+        particles.forEach((p) => {
+          ctx.globalAlpha = Math.max(0, p.life * 2);
+          ctx.fillStyle = p.c;
+          ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+        });
+        ctx.globalAlpha = 1;
+        if (paddle) {
+          const pg = ctx.createLinearGradient(0, paddle.y, 0, paddle.y + 14);
+          pg.addColorStop(0, '#FCD34D');
+          pg.addColorStop(1, '#D97706');
+          ctx.fillStyle = pg;
+          rr(paddle.x - paddle.w / 2, paddle.y, paddle.w, 14, 7);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.shadowColor = '#FDE68A';
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.arc(ball.x, ball.y, BALL_R, 0, 7);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          if (state === 'play' && ball.stuck && !paused)
+            txt('المس للإطلاق · اسحب للتحريك', VW / 2, paddle.y + 40, 14, '#C7D2FE', 'center', 600);
+          if (slowT > 0 || wideT > 0)
+            txt(
+              (wideT > 0 ? '↔ ' + Math.ceil(wideT) + 'ث  ' : '') +
+                (slowT > 0 ? '🐢 ' + Math.ceil(slowT) + 'ث' : ''),
+              VW / 2,
+              VH - 24,
+              12,
+              '#FCD34D',
+              'center',
+              600,
+            );
+        }
+        if (msgT > 0 && state === 'play') {
+          ctx.globalAlpha = Math.min(1, msgT * 2);
+          txt(msg, VW / 2, VH * 0.55, 30, '#FCD34D');
+          ctx.globalAlpha = 1;
+        }
+        if (state === 'ready' || state === 'over') {
+          ctx.fillStyle = 'rgba(15,10,50,.78)';
+          ctx.fillRect(0, 0, VW, VH);
+          txt('🧱', VW / 2, VH * 0.26, 56);
+          txt(
+            state === 'ready' ? 'تحطيم الطوب' : 'انتهت اللعبة',
+            VW / 2,
+            VH * 0.36,
+            36,
+            state === 'ready' ? '#FCD34D' : '#F87171',
+          );
+          if (state === 'over') {
+            txt('النتيجة ' + score, VW / 2, VH * 0.44, 22);
+            txt(
+              score >= best && score > 0 ? '🏆 رقم قياسي جديد!' : 'الأفضل ' + best,
+              VW / 2,
+              VH * 0.49,
+              16,
+              '#FCD34D',
+              'center',
+              600,
+            );
+          } else {
+            txt('حرّك المضرب وحطّم كل الطوب.', VW / 2, VH * 0.44, 15, '#C7D2FE', 'center', 500);
+            txt('اجمع التعزيزات ↔ ♥ 🐢', VW / 2, VH * 0.48, 15, '#C7D2FE', 'center', 500);
+            txt('الأفضل ' + best, VW / 2, VH * 0.53, 16, '#FCD34D', 'center', 600);
+          }
+          if (state === 'ready' || performance.now() - overAt > 700)
+            txt(state === 'ready' ? 'المس للبدء' : 'المس للعب مرة أخرى', VW / 2, VH * 0.62, 20);
+        }
+        if (paused) {
+          ctx.fillStyle = 'rgba(0,0,0,.5)';
+          ctx.fillRect(0, 0, VW, VH);
+          txt('متوقف مؤقتًا', VW / 2, VH * 0.42, 40);
+          txt('المس للمتابعة', VW / 2, VH * 0.49, 18, '#C7D2FE', 'center', 600);
+        }
+      }
+      /* حلقة اللعبة */
+      let last = performance.now();
+      function loop(now) {
+        let dt = (now - last) / 1000;
+        last = now;
+        if (dt > 1 / 30) dt = 1 / 30;
+        if (!paused && dt > 0) update(dt);
+        draw();
+        requestAnimationFrame(loop);
+      }
+      resize();
+      buildLevel();
+      state = 'ready';
+      requestAnimationFrame((t) => {
+        last = t;
+        loop(t);
+      });
+    </script>
+  </body>
+</html>

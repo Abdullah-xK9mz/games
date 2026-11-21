@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1E1B4B" />
+    <title>الألعاب</title>
+    <style>
+      :root {
+        --bg: #1e1b4b;
+        --bg2: #2a2670;
+        --brand: #7c3aed;
+        --brand-d: #4338ca;
+        --accent: #fbbf24;
+        --card: #f5f3ff;
+        --ink: #1e1b4b;
+        --ink-soft: #4c1d95;
+        --font: system-ui, -apple-system, 'Segoe UI', Tahoma, 'Noto Sans Arabic', sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        font-family: var(--font);
+        background: var(--bg);
+        color: #eef2ff;
+        min-height: 100vh;
+        user-select: none;
+        -webkit-user-select: none;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      header {
+        background: linear-gradient(135deg, var(--brand-d), var(--brand));
+        color: #fff;
+        padding: calc(18px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) 18px
+          calc(18px + env(safe-area-inset-left));
+      }
+      header h1 {
+        margin: 0;
+        font-size: 23px;
+      }
+      header p {
+        margin: 4px 0 0;
+        opacity: 0.85;
+        font-size: 13px;
+      }
+      main {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 16px calc(16px + env(safe-area-inset-right)) 24px calc(16px + env(safe-area-inset-left));
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .game {
+        display: flex;
+        flex-direction: column;
+        min-height: 150px;
+        padding: 16px 14px;
+        border-radius: 20px;
+        background: var(--card);
+        color: var(--ink);
+        text-decoration: none;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        border: 2px solid transparent;
+      }
+      .game:active {
+        transform: scale(0.97);
+      }
+      .game:focus-visible {
+        border-color: var(--accent);
+        outline: none;
+      }
+      .game .e {
+        font-size: 38px;
+      }
+      .game b {
+        margin-top: auto;
+        font-size: 17px;
+      }
+      .game small {
+        color: var(--ink-soft);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .game .go {
+        margin-top: 10px;
+        text-align: center;
+        padding: 9px;
+        border-radius: 12px;
+        background: var(--accent);
+        color: var(--ink);
+        font-weight: 700;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🎮 الألعاب</h1>
+      <p>اختر لعبة وابدأ اللعب.</p>
+    </header>
+    <main>
+      <a class="game" href="XO.html"><span class="e">❌⭕</span><b>إكس أو</b><small>ضد الذكاء الاصطناعي أو لاعبان</small><span class="go">العب</span></a>
+      <a class="game" href="memory.html"><span class="e">🃏</span><b>لعبة الذاكرة</b><small>ابحث عن الأزواج المتطابقة</small><span class="go">العب</span></a>
+      <a class="game" href="snake.html"><span class="e">🐍</span><b>الثعبان</b><small>اسحب للتوجيه</small><span class="go">العب</span></a>
+      <a class="game" href="bricks.html"><span class="e">🧱</span><b>تحطيم الطوب</b><small>حرّك المضرب وحطّم الطوب</small><span class="go">العب</span></a>
+      <a class="game" href="flappy.html"><span class="e">🐤</span><b>فلابي بيرد</b><small>المس للقفز بين الأنابيب</small><span class="go">العب</span></a>
+      <a class="game" href="test.html"><span class="e">❓</span><b>اختبار المعلومات</b><small>10 أسئلة بمؤقت لكل سؤال</small><span class="go">العب</span></a>
+    </main>
+  </body>
+</html>
